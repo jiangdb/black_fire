@@ -36,7 +36,7 @@
 #define EVENT_TYPE(x)                   (x&0x0f)
 #define EVENT_COUNTER(x)                ((x&0xf0)>>4)
 #define EVENT_SLIDER_POSITION(x,y)      ((x<<8|y))
-#define SLIDER_THRESHOLD                10
+#define SLIDER_THRESHOLD                5 
 
 //The semaphore indicating the data is ready.
 static SemaphoreHandle_t rdySem = NULL;
@@ -94,54 +94,86 @@ static esp_err_t i2c_read(i2c_port_t i2c_num, uint8_t* data_rd, size_t size)
 #define DIFF_100MS  (240000 * 200) 
 static void cpt112s_parse_event(uint8_t* event)
 {
+    static int16_t lastSliderPos = -1;
+    static int64_t lastSliderTime = -1;
+    static int16_t sliderStartPos = -1;
+    static int64_t sliderTouchTime = 0;
+    static int16_t sliderSpped = 0;
     int eventType = EVENT_TYPE(event[0]);
     key_event_t keyEvent;
-    static int16_t lastSliderPos = -1;
-    static uint32_t lastSliderTime = 0;
-    uint32_t currtime=xthal_get_ccount();
-    uint32_t diff=currtime-lastSliderTime;
 
     keyEvent.key_type = KEY_TYPE_MAX;
     if (EVENT_TOUCH == eventType) {
         keyEvent.key_type = RIGHT_KEY;
         keyEvent.key_value = KEY_DOWN;
+        send_key_event(keyEvent, false);
     } else if (EVENT_TOUCH_RELEASE == eventType) {
         keyEvent.key_type = RIGHT_KEY;
         keyEvent.key_value = KEY_UP;
+        send_key_event(keyEvent, false);
         //beap(0,100);
     } else if (EVENT_SLIDER == eventType) {
         int currentPos =  EVENT_SLIDER_POSITION(event[1], event[2]);
+        int64_t currentTime = esp_timer_get_time();
         if (currentPos == 0xffff) {
-            ESP_LOGI(TAG, "%s: slider release\n", __func__);
             //slider release, skip it
-            lastSliderPos = -1;
-            return;
-        }
-        if (lastSliderPos < 0) {
-            //slider touch
-            lastSliderPos = currentPos;
-            lastSliderTime = currtime;
-            ESP_LOGI(TAG, "%s: slider touch: %d, %d\n", __func__, lastSliderPos, lastSliderTime );
-            return;
-        }
-        ESP_LOGI(TAG, "%s: slider: =================> %d (%d)\n", __func__, currentPos, diff/240000);
-        /*
-        if ( diff < DIFF_100MS) {
-            //skip event between 100ms
-            return;
-        }
-        if (currentPos == lastSliderPos) return;
-        */
-        if (abs(currentPos-lastSliderPos) < SLIDER_THRESHOLD) return;
+            ESP_LOGI(TAG, "%s: slider release ###################### \n", __func__);
+            //send event
+            keyEvent.key_type = SLIDER_KEY;
+            keyEvent.key_value = KEY_UP;
+            send_key_event(keyEvent, false);
 
-        if (currentPos > lastSliderPos) keyEvent.key_type = SLIDER_RIGHT_KEY;
-        else keyEvent.key_type = SLIDER_LEFT_KEY;
-        keyEvent.key_value = KEY_UP;
-        keyEvent.key_data = diff/240000;
+            lastSliderPos = -1;
+            lastSliderTime = 0;
+            //TODO handle auto scroll
+            //int64_t sliderReleaseTime = esp_timer_get_time();
+            //int32_t speed = (currentPos - sliderStartPos);
+            return;
+        } else if (lastSliderPos < 0) {
+            //slider touch
+            ESP_LOGI(TAG, "%s: slider touch: ********************* %d\n", __func__, currentPos);
+            //send event
+            keyEvent.key_type = SLIDER_KEY;
+            keyEvent.key_value = KEY_DOWN;
+            send_key_event(keyEvent, false);
+
+            sliderStartPos = lastSliderPos = currentPos;
+            lastSliderTime = currentTime;
+            return;
+        }
+
+        //if (abs(currentPos-lastSliderPos) < SLIDER_THRESHOLD) return;
+
+        int distance = abs(currentPos - lastSliderPos);
+        int intervalMs = (int)(currentTime - lastSliderTime)/1000;
+        int speed = distance * 1000 / intervalMs;
+        ESP_LOGI(TAG, "%s: slider: =================> %d (%d, %d)\n", __func__, currentPos, currentPos-lastSliderPos, intervalMs);
+
+        /*
+        //handle steps
+        if (currentPos > lastSliderPos) {
+            //move right
+            for (; (lastSliderPos+SLIDER_THRESHOLD) <= currentPos; lastSliderPos+=SLIDER_THRESHOLD ) {
+                keyEvent.key_type = SLIDER_KEY;
+                keyEvent.key_value = KEY_SLIDE;
+                keyEvent.key_extra[0] = 1;
+                ESP_LOGI(TAG, "%s: send slider key\n", __func__);
+                send_key_event(keyEvent, false);
+            }
+        } else {
+            //move left
+            for (; (lastSliderPos-SLIDER_THRESHOLD) >= currentPos; lastSliderPos-=SLIDER_THRESHOLD ) {
+                keyEvent.key_type = SLIDER_KEY;
+                keyEvent.key_value = KEY_SLIDE;
+                keyEvent.key_extra[0] = -1;
+                ESP_LOGI(TAG, "%s: send slider key\n", __func__);
+                send_key_event(keyEvent, false);
+            }
+        }
+        */
         lastSliderPos = currentPos;
-        lastSliderTime = currtime;
+        lastSliderTime = currentTime;
     }
-    send_key_event(keyEvent, false);
 }
 
 static void main_loop()
@@ -151,7 +183,7 @@ static void main_loop()
         //Wait until data is ready
         xSemaphoreTake( rdySem, portMAX_DELAY );
 
-        ESP_LOGI(TAG, "%s: *****    interrupt come in\n", __func__);
+        //ESP_LOGI(TAG, "%s: *****    interrupt come in\n", __func__);
         //gpio_isr_handler_remove(PIN_NUM_INT);
 
         while(!gpio_get_level(PIN_NUM_INT)) {
@@ -162,7 +194,7 @@ static void main_loop()
             }
         }
 
-        ESP_LOGI(TAG, "%s: *****     no more event\n", __func__);
+        //ESP_LOGI(TAG, "%s: *****     no more event\n", __func__);
         //gpio_isr_handler_add(PIN_NUM_INT);
         //ESP_LOGI(TAG, "%s: release\n", __func__);
     }

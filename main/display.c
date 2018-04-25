@@ -148,7 +148,7 @@ static void clear_display_data(bool leaveBattery)
 
 void display_set_temperature(int32_t temp)
 {
-
+    //ESP_LOGI(TAG, "%s(%d)\n", __func__, temp);
     int8_t data[DIGITAL_NUMBER];
     //convert to array, LSB mode
     memset(data, -2, sizeof(data));

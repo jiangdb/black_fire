@@ -7,8 +7,7 @@
 enum {
 	LEFT_KEY,
 	RIGHT_KEY,
-	SLIDER_LEFT_KEY,
-	SLIDER_RIGHT_KEY,
+	SLIDER_KEY,
     KEY_TYPE_MAX
 };
 
@@ -17,13 +16,14 @@ enum {
     KEY_UP,
     KEY_HOLD,
     KEY_DOWN,
+    KEY_SLIDE,
     KEY_VALUE_MAX
 };
 
 typedef struct {
-	int8_t key_type;
-	int8_t key_value;
-	int32_t key_data;
+	int32_t key_type;
+	int32_t key_value;
+	int32_t key_extra[4];
 } key_event_t;
 
 void send_key_event(key_event_t keyEvent, bool fromIsr);

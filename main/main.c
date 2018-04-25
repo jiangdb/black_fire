@@ -85,23 +85,18 @@ static void enable_setting(bool enable)
 
 void send_key_event(key_event_t keyEvent, bool fromIsr)
 {
-    ESP_LOGI(TAG,"%s(%d, %d, %d)\n", __func__, keyEvent.key_type, keyEvent.key_value, fromIsr);
     if (fromIsr) {
         xQueueSendToBackFromISR(eventQueue, &keyEvent, ( TickType_t ) 0 );
     }else{
         xQueueSendToBack(eventQueue, &keyEvent, ( TickType_t ) 0 );
     }
-    ESP_LOGI(TAG,"exit %s\n", __func__);
 }
 
 static void handle_key_event(void *arg)
 {
     while(1) {
         key_event_t keyEvent;
-        ESP_LOGI(TAG,"%s: wait for key evnet\n", __func__);
         xQueueReceive(eventQueue, &keyEvent, portMAX_DELAY);
-
-        ESP_LOGI(TAG,"%s: handle key evnet(%d, %d, %d) !!!\n", __func__, keyEvent.key_type, keyEvent.key_value, keyEvent.key_data);
 
         switch(keyEvent.key_type){
             case LEFT_KEY: 
@@ -114,19 +109,19 @@ static void handle_key_event(void *arg)
                     toggle_heat();
                 }
                 break;
-            case SLIDER_LEFT_KEY:
-                targetTemperature--;
-                if (targetTemperature < 0) {
-                    targetTemperature = 0;
+            case SLIDER_KEY:
+                if (keyEvent.key_value == KEY_DOWN) {
+                    //slider touch
+                } else if (keyEvent.key_value == KEY_UP) {
+                    //slider release
+                } else if (keyEvent.key_value == KEY_SLIDE) {
+                    targetTemperature += keyEvent.key_extra[0];
+                    if (targetTemperature < 0) {
+                        targetTemperature = 0;
+                    } else if (targetTemperature > 100) {
+                        targetTemperature = 100;
+                    }
                 }
-                enable_setting(true);
-                break;
-            case SLIDER_RIGHT_KEY:
-                targetTemperature++;
-                if (targetTemperature > 100) {
-                    targetTemperature = 100;
-                }
-                //ESP_LOGI(TAG, "%s: target: %d\n", __func__, targetTemperature);
                 enable_setting(true);
                 break;
             default:
@@ -156,12 +151,10 @@ void app_main()
     //int direction = 1;
     targetTemperature = config_get_target_temperature();
 
-    int64_t time = 0;
     while(!mainDone) {
         vTaskDelay(MAIN_LOOP_SPEED/portTICK_RATE_MS);
-        time = esp_timer_get_time() - time;
-        ESP_LOGI(TAG, "time passed %ld", time);
 
+        display_set_temperature(targetTemperature);
         /*
         if (setting_tick >= 0) {
             display_set_temperature(targetTemperature);
@@ -171,26 +164,12 @@ void app_main()
             }
             continue;
         }
+        */
 
+        /*
         int32_t val = spi_adc_get_value();
         int32_t temp = convert_temp(val);
         display_set_temperature(temp);
         */
-
-        /*
-        if (direction == 1) {
-            targetTemperature++;
-            if (targetTemperature >= 100) {
-                direction = 0;
-            }
-        } else {
-            targetTemperature--;
-            if (targetTemperature <= 0) {
-                direction = 1;
-            }
-        }
-        */
-        //display_set_temperature(targetTemperature);
-
     }
 }
