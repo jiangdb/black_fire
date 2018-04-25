@@ -1,2 +1,2 @@
-# black_stone
-BlackStone Device side
+# black_fire
+black fire firmware
